@@ -1,28 +1,31 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8" />
-    <title>Agente con voz - Teams</title>
+  <meta charset="UTF-8" />
+  <title>Agente con voz</title>
+
+  <!-- Azure Speech SDK -->
+  <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
 </head>
+
 <body>
 
-    <h2>Agente con voz</h2>
+<h2>Agente con voz</h2>
 
-    <input type="text" id="inputTexto" placeholder="Escribe o usa la voz..." />
-    <button onclick="enviarTexto()">Enviar</button>
-    <button onclick="hablar()">🎤 Hablar</button>
+<input type="text" id="inputTexto" placeholder="Escribe o usa la voz..." />
+<button onclick="enviarTexto()">Enviar</button>
+<button onclick="hablar()">🎤 Hablar</button>
 
-    <p id="estado"></p>
-    <p id="respuesta"></p>
+<p id="estado"></p>
+<p id="respuesta"></p>
 
 <script>
 
-// 🔹 COPILOT CONFIG
-const tokenEndpoint = "https://f1961b2c14e1e41bb646d75d750e21.0c.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr61c_Agenteconexiondevoz/directline/token?api-version=2022-03-01-preview";
-
-// 🔹 AZURE SPEECH
+// ================= CONFIG =================
 const speechKey = "7XEttQQXjFfcl8wQJyN8J6Y8sQhSnu5fqsLceYRIE4nf29Ip27J9JQQJ99CFACYeBjFXJ3w3AAAYACOGLZIC";
-const speechRegion = "eastus"; // ejemplo: centralus
+const speechRegion = "eastus";
+
+const tokenEndpoint = "https://f1961b2c14e1e41bb646d75d750e21.0c.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr61c_Agenteconexiondevoz/directline/token?api-version=2022-03-01-preview";
 
 let directLineToken;
 let directLineDomain;
@@ -31,166 +34,149 @@ let watermark;
 let procesando = false;
 let inicializado = false;
 
-const userId = "user-" + Math.random().toString(36).substring(2, 10);
+const userId = "user-" + Math.random();
 
-// ================= INIT =================
+// ================= INIT BOT =================
 async function inicializarBot() {
 
-    const apiVersion = new URL(tokenEndpoint).searchParams.get("api-version");
-    const baseUrl = new URL(tokenEndpoint).origin;
+  const apiVersion = new URL(tokenEndpoint).searchParams.get("api-version");
+  const baseUrl = new URL(tokenEndpoint).origin;
 
-    const regional = await fetch(`${baseUrl}/powervirtualagents/regionalchannelsettings?api-version=${apiVersion}`);
-    const regionalData = await regional.json();
+  const regional = await fetch(`${baseUrl}/powervirtualagents/regionalchannelsettings?api-version=${apiVersion}`);
+  const regionalData = await regional.json();
 
-    directLineDomain = new URL("v3/directline", regionalData.channelUrlsById.directline).toString().replace(/\/$/, "");
+  directLineDomain = new URL("v3/directline", regionalData.channelUrlsById.directline).toString().replace(/\/$/, "");
 
-    const tokenRes = await fetch(tokenEndpoint);
-    const tokenData = await tokenRes.json();
-    directLineToken = tokenData.token;
+  const tokenRes = await fetch(tokenEndpoint);
+  const tokenData = await tokenRes.json();
 
-    const conv = await fetch(`${directLineDomain}/conversations`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${directLineToken}` }
-    });
+  directLineToken = tokenData.token;
 
-    const convData = await conv.json();
-    conversationId = convData.conversationId;
+  const conv = await fetch(`${directLineDomain}/conversations`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${directLineToken}`
+    }
+  });
 
-    // iniciar conversación
-    await esperar(1500);
+  const convData = await conv.json();
+  conversationId = convData.conversationId;
 
-    await drenarInicial();
+  await esperar(1500);
+  await drenarInicial();
 
-    inicializado = true;
-    document.getElementById("estado").innerText = "Listo";
+  inicializado = true;
+  document.getElementById("estado").innerText = "Listo";
 }
 
 // ================= LIMPIAR INICIO =================
 async function drenarInicial() {
-    const res = await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
-        headers: { "Authorization": `Bearer ${directLineToken}` }
-    });
-    const data = await res.json();
-    watermark = data.watermark;
+
+  const res = await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
+    headers: { "Authorization": `Bearer ${directLineToken}` }
+  });
+
+  const data = await res.json();
+  watermark = data.watermark;
 }
 
 // ================= ENVIAR TEXTO =================
 async function enviarTexto() {
 
-    if (!inicializado || procesando) return;
+  if (!inicializado || procesando) return;
 
-    const texto = document.getElementById("inputTexto").value;
+  const texto = document.getElementById("inputTexto").value;
 
-    procesando = true;
-    document.getElementById("estado").innerText = "Procesando...";
+  procesando = true;
+  document.getElementById("estado").innerText = "Procesando...";
 
-    await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${directLineToken}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            type: "message",
-            from: { id: userId, role: "user" },
-            text: texto
-        })
-    });
+  await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${directLineToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      type: "message",
+      from: { id: userId, role: "user" },
+      text: texto
+    })
+  });
 
-    const respuesta = await esperarRespuesta();
+  const respuesta = await esperarRespuesta();
 
-    document.getElementById("respuesta").innerText = respuesta;
+  document.getElementById("respuesta").innerText = respuesta;
 
-    procesando = false;
-    document.getElementById("estado").innerText = "Listo";
+  procesando = false;
+  document.getElementById("estado").innerText = "Listo";
 }
 
-// ================= ESPERAR RESPUESTA =================
+// ================= RESPUESTA BOT =================
 async function esperarRespuesta() {
 
-    for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 15; i++) {
 
-        const url = watermark
-            ? `${directLineDomain}/conversations/${conversationId}/activities?watermark=${encodeURIComponent(watermark)}`
-            : `${directLineDomain}/conversations/${conversationId}/activities`;
+    const url = watermark
+      ? `${directLineDomain}/conversations/${conversationId}/activities?watermark=${encodeURIComponent(watermark)}`
+      : `${directLineDomain}/conversations/${conversationId}/activities`;
 
-        const res = await fetch(url, {
-            headers: { "Authorization": `Bearer ${directLineToken}` }
-        });
+    const res = await fetch(url, {
+      headers: {
+        "Authorization": `Bearer ${directLineToken}`
+      }
+    });
 
-        const data = await res.json();
+    const data = await res.json();
 
-        if (data.watermark) watermark = data.watermark;
+    if (data.watermark) watermark = data.watermark;
 
-        const botMsgs = data.activities.filter(a =>
-            a.type === "message" &&
-            a.from.role === "bot" &&
-            a.text
-        );
+    const botMsgs = data.activities.filter(a =>
+      a.type === "message" &&
+      a.from.role === "bot" &&
+      a.text
+    );
 
-        if (botMsgs.length > 0) {
-            return botMsgs[botMsgs.length - 1].text;
-        }
-
-        await esperar(1200);
+    if (botMsgs.length > 0) {
+      return botMsgs[botMsgs.length - 1].text;
     }
 
-    return "Sin respuesta";
+    await esperar(1200);
+  }
+
+  return "Sin respuesta";
 }
 
-// ================= VOZ (AZURE) =================
-async function hablar() {
+// ================= VOZ CON SDK =================
+function hablar() {
 
-    document.getElementById("estado").innerText = "Grabando...";
+  document.getElementById("estado").innerText = "Escuchando...";
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(speechKey, speechRegion);
+  speechConfig.speechRecognitionLanguage = "es-MX";
 
-    const recorder = new MediaRecorder(stream);
-    let chunks = [];
+  const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
 
-    recorder.ondataavailable = e => chunks.push(e.data);
+  const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
 
-    recorder.onstop = async () => {
+  recognizer.recognizeOnceAsync(result => {
 
-        document.getElementById("estado").innerText = "Transcribiendo...";
+    if (result.text) {
 
-        
-const blob = new Blob(chunks, { type: "audio/webm" });
+      document.getElementById("inputTexto").value = result.text;
+      enviarTexto();
 
-const res = await fetch(
-    `https://${speechRegion}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=es-MX`,
-    {
-        method: "POST",
-        headers: {
-            "Ocp-Apim-Subscription-Key": speechKey,
-            "Content-Type": "audio/webm"
-        },
-        body: blob
+    } else {
+      document.getElementById("estado").innerText = "No se entendió";
     }
-);
 
+    recognizer.close();
 
-        const data = await res.json();
-
-        if (data.DisplayText) {
-            document.getElementById("inputTexto").value = data.DisplayText;
-            enviarTexto();
-        } else {
-            document.getElementById("estado").innerText = "No se entendió";
-        }
-
-        stream.getTracks().forEach(t => t.stop());
-        chunks = [];
-    };
-
-    recorder.start();
-
-    setTimeout(() => recorder.stop(), 4000);
+  });
 }
 
 // ================= UTILS =================
 function esperar(ms) {
-    return new Promise(r => setTimeout(r, ms));
+  return new Promise(r => setTimeout(r, ms));
 }
 
 inicializarBot();
