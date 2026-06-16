@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agente con voz - Copilot Studio</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+        }
+
+        .contenedor {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        input {
+            flex: 1;
+            min-width: 280px;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 10px 14px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #estado {
+            margin-bottom: 15px;
+            color: #555;
+            font-size: 14px;
+        }
+
+        #respuesta {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 15px;
+            min-height: 80px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h2>Agente de prueba con voz y texto</h2>
+    <div id="estado">Inicializando agente...</div>
+
+    <div class="contenedor">
+        <input type="text" id="inputTexto" placeholder="Escribe algo o usa el micrófono..." />
+        <button onclick="enviarTexto()">Enviar</button>
+        <button onclick="hablar()">🎤 Hablar</button>
+    </div>
+
+    <div>
+        <strong>Respuesta:</strong>
+        <div id="respuesta"></div>
+    </div>
+
+    <script>
+        const tokenEndpoint = "https://f1961b2c14e1e41bb646d75d750e21.0c.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr61c_Agenteconexiondevoz/directline/token?api-version=2022-03-01-preview";
+
+        let directLineToken = null;
+        let directLineDomain = null;
+        let conversationId = null;
+        let watermark = null;
+        let procesando = false;
+        let inicializado = false;
+
+        const userId = "user-" + Math.random().toString(36).substring(2, 10);
+
+        async function inicializarBot() {
+            try {
+                document.getElementById("estado").innerText = "Obteniendo configuración del agente...";
+
+                const apiVersion = new URL(tokenEndpoint).searchParams.get("api-version") || "2022-03-01-preview";
+                const baseUrl = new URL(tokenEndpoint).origin;
+
+                // 1. Obtener configuración regional del canal
+                const regionalSettingsUrl = `${baseUrl}/powervirtualagents/regionalchannelsettings?api-version=${apiVersion}`;
+                const regionalResponse = await fetch(regionalSettingsUrl);
+                const regionalData = await regionalResponse.json();
+
+                directLineDomain = new URL("v3/directline", regionalData.channelUrlsById.directline)
+                    .toString()
+                    .replace(/\/$/, "");
+
+                // 2. Obtener token
+                const tokenResponse = await fetch(tokenEndpoint);
+                const tokenData = await tokenResponse.json();
+                directLineToken = tokenData.token;
+
+                // 3. Crear conversación
+                const conversationResponse = await fetch(`${directLineDomain}/conversations`, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${directLineToken}`
+                    }
+                });
+
+                const conversationData = await conversationResponse.json();
+                conversationId = conversationData.conversationId;
+
+                // 4. Disparar saludo inicial
+                await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${directLineToken}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        type: "event",
+                        name: "startConversation",
+                        from: { id: userId, role: "user" },
+                        channelId: "webchat",
+                        entities: [
+                            {
+                                type: "ClientCapabilities",
+                                requiresBotState: true,
+                                supportsListening: true,
+                                supportsTts: true
+                            }
+                        ]
+                    })
+                });
+
+                // 5. Esperar un poco para que el greeting se termine de generar
+                document.getElementById("estado").innerText = "Preparando conversación...";
+                await esperar(1800);
+
+                // 6. Consumir greeting inicial y dejar watermark limpio
+                await drenarMensajesIniciales();
+
+                inicializado = true;
+                document.getElementById("estado").innerText = "Agente listo";
+
+            } catch (error) {
+                console.error("Error inicializando agente:", error);
+                document.getElementById("estado").innerText = "Error al inicializar el agente";
+            }
+        }
+
+        async function drenarMensajesIniciales() {
+            try {
+                const response = await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
+                    headers: {
+                        "Authorization": `Bearer ${directLineToken}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.watermark) {
+                    watermark = data.watermark;
+                }
+
+                // No mostrar greeting, solo limpiar backlog
+                document.getElementById("respuesta").innerText = "";
+
+            } catch (error) {
+                console.warn("No se pudieron drenar mensajes iniciales:", error);
+            }
+        }
+
+        async function enviarTexto() {
+            if (!inicializado) {
+                document.getElementById("respuesta").innerText = "El agente todavía no está listo";
+                return;
+            }
+
+            if (procesando) {
+                return;
+            }
+
+            const texto = document.getElementById("inputTexto").value.trim();
+
+            if (!texto) {
+                alert("Escribe algo o usa el micrófono");
+                return;
+            }
+
+            procesando = true;
+            document.getElementById("estado").innerText = "Enviando mensaje...";
+            document.getElementById("respuesta").innerText = "Procesando...";
+
+            try {
+                // Enviar mensaje del usuario
+                await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${directLineToken}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        type: "message",
+                        from: { id: userId, role: "user" },
+                        text: texto
+                    })
+                });
+
+                // Esperar SOLO la siguiente respuesta nueva del bot
+                const respuestaBot = await esperarRespuestaBot();
+
+                document.getElementById("respuesta").innerText = respuestaBot;
+                document.getElementById("estado").innerText = "Agente listo";
+            } catch (error) {
+                console.error("Error enviando mensaje:", error);
+                document.getElementById("respuesta").innerText = "Error al conectar con el agente";
+                document.getElementById("estado").innerText = "Error";
+            } finally {
+                procesando = false;
+            }
+        }
+
+        async function esperarRespuestaBot(intentos = 18, pausaMs = 1200) {
+            for (let i = 0; i < intentos; i++) {
+                const url = watermark
+                    ? `${directLineDomain}/conversations/${conversationId}/activities?watermark=${encodeURIComponent(watermark)}`
+                    : `${directLineDomain}/conversations/${conversationId}/activities`;
+
+                const response = await fetch(url, {
+                    headers: {
+                        "Authorization": `Bearer ${directLineToken}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.watermark) {
+                    watermark = data.watermark;
+                }
+
+                const mensajesBot = (data.activities || []).filter(a =>
+                    a.type === "message" &&
+                    a.from &&
+                    a.from.role === "bot" &&
+                    a.text &&
+                    a.text.trim().length > 0
+                );
+
+                if (mensajesBot.length > 0) {
+                    // Tomar solo el último mensaje nuevo del bot
+                    return mensajesBot[mensajesBot.length - 1].text;
+                }
+
+                await esperar(pausaMs);
+            }
+
+            return "El agente tardó demasiado en responder";
+        }
+
+        function hablar() {
+            if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+                alert("Tu navegador no soporta reconocimiento de voz");
+                return;
+            }
+
+            if (procesando) {
+                return;
+            }
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const reconocimiento = new SpeechRecognition();
+
+            reconocimiento.lang = "es-MX";
+            reconocimiento.interimResults = false;
+            reconocimiento.maxAlternatives = 1;
+
+            reconocimiento.start();
+
+            reconocimiento.onstart = function () {
+                document.getElementById("estado").innerText = "Escuchando...";
+            };
+
+            reconocimiento.onresult = function (event) {
+                const texto = event.results[0][0].transcript;
+                document.getElementById("inputTexto").value = texto;
+                enviarTexto();
+            };
+
+            reconocimiento.onerror = function (event) {
+                console.error("Error de voz:", event.error);
+                document.getElementById("estado").innerText = "Error en reconocimiento de voz";
+            };
+
+            reconocimiento.onend = function () {
+                if (!procesando && inicializado) {
+                    document.getElementById("estado").innerText = "Agente listo";
+                }
+            };
+        }
+
+        function esperar(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        document.getElementById("inputTexto").addEventListener("keydown", function(event) {
+            if (event.key === "Enter") {
+                enviarTexto();
+            }
+        });
+
+        inicializarBot();
+    </script>
+</body>
+</html>
