@@ -1,107 +1,32 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8" />
-<title>Agente con voz</title>
+  <meta charset="UTF-8" />
+  <title>Agente con voz</title>
 
-<!-- Azure Speech SDK -->
-<script src="https://aka.ms/csspeech/jsbrowserpackagerawscript"></script>
-
-<style>
-
-body {
-    background-color: #f3f2f1;
-    font-family: Arial, sans-serif;
-    margin: 0;
-}
-
-/* Contenedor principal */
-.container {
-    max-width: 600px;
-    margin: auto;
-    padding: 20px;
-}
-
-/* Chat */
-.chat {
-    background: white;
-    height: 400px;
-    overflow-y: auto;
-    border-radius: 10px;
-    padding: 15px;
-    margin-bottom: 10px;
-}
-
-/* Mensajes */
-.msg-user {
-    text-align: right;
-    margin: 6px 0;
-    color: #004578;
-    font-weight: bold;
-}
-
-.msg-bot {
-    text-align: left;
-    margin: 6px 0;
-    color: #333;
-}
-
-/* Estado */
-#estado {
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 5px;
-}
-
-/* Input */
-.input-area {
-    display: flex;
-    gap: 5px;
-}
-
-input {
-    flex: 1;
-    padding: 10px;
-}
-
-button {
-    padding: 10px;
-    cursor: pointer;
-}
-
-</style>
+  <!-- Azure Speech SDK -->
+  <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
 </head>
 
 <body>
 
-<div class="container">
-
 <h2>Agente con voz</h2>
 
-<div id="estado">Preparando agente...</div>
+<input type="text" id="inputTexto" placeholder="Escribe o usa la voz..." />
+<button onclick="enviarTexto()">Enviar</button>
+<button onclick="hablar()">🎤 Hablar</button>
 
-<div id="chat" class="chat"></div>
-
-<div class="input-area">
-    <input id="inputTexto" placeholder="Escribe algo..." />
-    <button onclick="enviarTexto()">Enviar</button>
-    <button onclick="hablar()">🎤</button>
-</div>
-
-</div>
+<p id="estado"></p>
+<p id="respuesta"></p>
 
 <script>
 
 // ================= CONFIG =================
-
-// ✅ ESTE YA ES TU ENDPOINT REAL
-const tokenEndpoint = "https://f1961b2c14e1e41bb646d75d750e21.0c.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr61c_Agenteconexiondevoz/directline/token?api-version=2022-03-01-preview";
-
-// 🔹 SOLO RELLENA ESTOS
 const speechKey = "7XEttQQXjFfcl8wQJyN8J6Y8sQhSnu5fqsLceYRIE4nf29Ip27J9JQQJ99CFACYeBjFXJ3w3AAAYACOGLZIC";
 const speechRegion = "eastus";
 
-// ================= VARIABLES =================
+const tokenEndpoint = "https://f1961b2c14e1e41bb646d75d750e21.0c.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr61c_Agenteconexiondevoz/directline/token?api-version=2022-03-01-preview";
+
 let directLineToken;
 let directLineDomain;
 let conversationId;
@@ -111,173 +36,147 @@ let inicializado = false;
 
 const userId = "user-" + Math.random();
 
-// ================= UI CHAT =================
-function agregarMensaje(texto, tipo) {
-
-    const chat = document.getElementById("chat");
-
-    const msg = document.createElement("div");
-
-    msg.className = tipo === "user" ? "msg-user" : "msg-bot";
-
-    msg.innerText = texto;
-
-    chat.appendChild(msg);
-
-    chat.scrollTop = chat.scrollHeight;
-}
-
 // ================= INIT BOT =================
 async function inicializarBot() {
 
-    document.getElementById("estado").innerText = "Preparando agente...";
+  const apiVersion = new URL(tokenEndpoint).searchParams.get("api-version");
+  const baseUrl = new URL(tokenEndpoint).origin;
 
-    const apiVersion = new URL(tokenEndpoint).searchParams.get("api-version");
-    const baseUrl = new URL(tokenEndpoint).origin;
+  const regional = await fetch(`${baseUrl}/powervirtualagents/regionalchannelsettings?api-version=${apiVersion}`);
+  const regionalData = await regional.json();
 
-    const regional = await fetch(`${baseUrl}/powervirtualagents/regionalchannelsettings?api-version=${apiVersion}`);
-    const regionalData = await regional.json();
+  directLineDomain = new URL("v3/directline", regionalData.channelUrlsById.directline).toString().replace(/\/$/, "");
 
-    directLineDomain = new URL("v3/directline", regionalData.channelUrlsById.directline)
-        .toString().replace(/\/$/, "");
+  const tokenRes = await fetch(tokenEndpoint);
+  const tokenData = await tokenRes.json();
 
-    const tokenRes = await fetch(tokenEndpoint);
-    const tokenData = await tokenRes.json();
+  directLineToken = tokenData.token;
 
-    directLineToken = tokenData.token;
+  const conv = await fetch(`${directLineDomain}/conversations`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${directLineToken}`
+    }
+  });
 
-    const conv = await fetch(`${directLineDomain}/conversations`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${directLineToken}` }
-    });
+  const convData = await conv.json();
+  conversationId = convData.conversationId;
 
-    const convData = await conv.json();
-    conversationId = convData.conversationId;
+  await esperar(1500);
+  await drenarInicial();
 
-    await esperar(1500);
-    await drenarInicial();
-
-    inicializado = true;
-
-    document.getElementById("estado").innerText = "Agente listo";
+  inicializado = true;
+  document.getElementById("estado").innerText = "Listo";
 }
 
 // ================= LIMPIAR INICIO =================
 async function drenarInicial() {
 
-    const res = await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
-        headers: { "Authorization": `Bearer ${directLineToken}` }
-    });
+  const res = await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
+    headers: { "Authorization": `Bearer ${directLineToken}` }
+  });
 
-    const data = await res.json();
-
-    watermark = data.watermark;
+  const data = await res.json();
+  watermark = data.watermark;
 }
 
 // ================= ENVIAR TEXTO =================
 async function enviarTexto() {
 
-    if (!inicializado || procesando) return;
+  if (!inicializado || procesando) return;
 
-    const texto = document.getElementById("inputTexto").value;
+  const texto = document.getElementById("inputTexto").value;
 
-    if (!texto) return;
+  procesando = true;
+  document.getElementById("estado").innerText = "Procesando...";
 
-    agregarMensaje(texto, "user");
+  await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${directLineToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      type: "message",
+      from: { id: userId, role: "user" },
+      text: texto
+    })
+  });
 
-    document.getElementById("inputTexto").value = "";
+  const respuesta = await esperarRespuesta();
 
-    procesando = true;
+  document.getElementById("respuesta").innerText = respuesta;
 
-    document.getElementById("estado").innerText = "Pensando...";
-
-    await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${directLineToken}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            type: "message",
-            from: { id: userId, role: "user" },
-            text: texto
-        })
-    });
-
-    const respuesta = await esperarRespuesta();
-
-    agregarMensaje(respuesta, "bot");
-
-    procesando = false;
-
-    document.getElementById("estado").innerText = "Agente listo";
+  procesando = false;
+  document.getElementById("estado").innerText = "Listo";
 }
 
 // ================= RESPUESTA BOT =================
 async function esperarRespuesta() {
 
-    for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 15; i++) {
 
-        const url = watermark
-            ? `${directLineDomain}/conversations/${conversationId}/activities?watermark=${encodeURIComponent(watermark)}`
-            : `${directLineDomain}/conversations/${conversationId}/activities`;
+    const url = watermark
+      ? `${directLineDomain}/conversations/${conversationId}/activities?watermark=${encodeURIComponent(watermark)}`
+      : `${directLineDomain}/conversations/${conversationId}/activities`;
 
-        const res = await fetch(url, {
-            headers: { "Authorization": `Bearer ${directLineToken}` }
-        });
+    const res = await fetch(url, {
+      headers: {
+        "Authorization": `Bearer ${directLineToken}`
+      }
+    });
 
-        const data = await res.json();
+    const data = await res.json();
 
-        if (data.watermark) watermark = data.watermark;
+    if (data.watermark) watermark = data.watermark;
 
-        const botMsgs = data.activities.filter(a =>
-            a.type === "message" &&
-            a.from.role === "bot" &&
-            a.text
-        );
+    const botMsgs = data.activities.filter(a =>
+      a.type === "message" &&
+      a.from.role === "bot" &&
+      a.text
+    );
 
-        if (botMsgs.length > 0) {
-            return botMsgs[botMsgs.length - 1].text;
-        }
-
-        await esperar(1200);
+    if (botMsgs.length > 0) {
+      return botMsgs[botMsgs.length - 1].text;
     }
 
-    return "Sin respuesta";
+    await esperar(1200);
+  }
+
+  return "Sin respuesta";
 }
 
-// ================= VOZ =================
+// ================= VOZ CON SDK =================
 function hablar() {
 
-    document.getElementById("estado").innerText = "Escuchando...";
+  document.getElementById("estado").innerText = "Escuchando...";
 
-    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(speechKey, speechRegion);
-    speechConfig.speechRecognitionLanguage = "es-MX";
+  const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(speechKey, speechRegion);
+  speechConfig.speechRecognitionLanguage = "es-MX";
 
-    const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+  const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
 
-    const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+  const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
 
-    recognizer.recognizeOnceAsync(result => {
+  recognizer.recognizeOnceAsync(result => {
 
-        if (result.text) {
+    if (result.text) {
 
-            document.getElementById("inputTexto").value = result.text;
+      document.getElementById("inputTexto").value = result.text;
+      enviarTexto();
 
-            enviarTexto();
+    } else {
+      document.getElementById("estado").innerText = "No se entendió";
+    }
 
-        } else {
-            document.getElementById("estado").innerText = "No se entendió";
-        }
+    recognizer.close();
 
-        recognizer.close();
-
-    });
+  });
 }
 
-// ================= UTIL =================
+// ================= UTILS =================
 function esperar(ms) {
-    return new Promise(r => setTimeout(r, ms));
+  return new Promise(r => setTimeout(r, ms));
 }
 
 inicializarBot();
