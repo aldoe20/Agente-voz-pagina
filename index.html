@@ -154,20 +154,21 @@ async function hablar() {
 
         document.getElementById("estado").innerText = "Transcribiendo...";
 
-        const blob = new Blob(chunks, { type: "audio/wav" });
-        const buffer = await blob.arrayBuffer();
+        
+const blob = new Blob(chunks, { type: "audio/webm" });
 
-        const res = await fetch(
-            `https://${speechRegion}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=es-MX`,
-            {
-                method: "POST",
-                headers: {
-                    "Ocp-Apim-Subscription-Key": speechKey,
-                    "Content-Type": "audio/wav"
-                },
-                body: buffer
-            }
-        );
+const res = await fetch(
+    `https://${speechRegion}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=es-MX`,
+    {
+        method: "POST",
+        headers: {
+            "Ocp-Apim-Subscription-Key": speechKey,
+            "Content-Type": "audio/webm"
+        },
+        body: blob
+    }
+);
+
 
         const data = await res.json();
 
