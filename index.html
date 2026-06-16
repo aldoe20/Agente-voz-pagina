@@ -2,314 +2,199 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Agente con voz - Copilot Studio</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 900px;
-            margin: 30px auto;
-            padding: 0 20px;
-        }
-
-        h2 {
-            margin-bottom: 10px;
-        }
-
-        .contenedor {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-        }
-
-        input {
-            flex: 1;
-            min-width: 280px;
-            padding: 10px;
-            font-size: 16px;
-        }
-
-        button {
-            padding: 10px 14px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        #estado {
-            margin-bottom: 15px;
-            color: #555;
-            font-size: 14px;
-        }
-
-        #respuesta {
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            padding: 15px;
-            min-height: 80px;
-            white-space: pre-wrap;
-        }
-    </style>
+    <title>Agente con voz - Teams</title>
 </head>
 <body>
-    <h2>Agente de prueba con voz y texto</h2>
-    <div id="estado">Inicializando agente...</div>
 
-    <div class="contenedor">
-        <input type="text" id="inputTexto" placeholder="Escribe algo o usa el micrófono..." />
-        <button onclick="enviarTexto()">Enviar</button>
-        <button onclick="hablar()">🎤 Hablar</button>
-    </div>
+    <h2>Agente con voz</h2>
 
-    <div>
-        <strong>Respuesta:</strong>
-        <div id="respuesta"></div>
-    </div>
+    <input type="text" id="inputTexto" placeholder="Escribe o usa la voz..." />
+    <button onclick="enviarTexto()">Enviar</button>
+    <button onclick="hablar()">🎤 Hablar</button>
 
-    <script>
-        const tokenEndpoint = "https://f1961b2c14e1e41bb646d75d750e21.0c.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr61c_Agenteconexiondevoz/directline/token?api-version=2022-03-01-preview";
+    <p id="estado"></p>
+    <p id="respuesta"></p>
 
-        let directLineToken = null;
-        let directLineDomain = null;
-        let conversationId = null;
-        let watermark = null;
-        let procesando = false;
-        let inicializado = false;
+<script>
 
-        const userId = "user-" + Math.random().toString(36).substring(2, 10);
+// 🔹 COPILOT CONFIG
+const tokenEndpoint = "https://f1961b2c14e1e41bb646d75d750e21.0c.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr61c_Agenteconexiondevoz/directline/token?api-version=2022-03-01-preview";
 
-        async function inicializarBot() {
-            try {
-                document.getElementById("estado").innerText = "Obteniendo configuración del agente...";
+// 🔹 AZURE SPEECH
+const speechKey = "7XEttQQXjFfcl8wQJyN8J6Y8sQhSnu5fqsLceYRIE4nf29Ip27J9JQQJ99CFACYeBjFXJ3w3AAAYACOGLZIC";
+const speechRegion = "eastus"; // ejemplo: centralus
 
-                const apiVersion = new URL(tokenEndpoint).searchParams.get("api-version") || "2022-03-01-preview";
-                const baseUrl = new URL(tokenEndpoint).origin;
+let directLineToken;
+let directLineDomain;
+let conversationId;
+let watermark;
+let procesando = false;
+let inicializado = false;
 
-                // 1. Obtener configuración regional del canal
-                const regionalSettingsUrl = `${baseUrl}/powervirtualagents/regionalchannelsettings?api-version=${apiVersion}`;
-                const regionalResponse = await fetch(regionalSettingsUrl);
-                const regionalData = await regionalResponse.json();
+const userId = "user-" + Math.random().toString(36).substring(2, 10);
 
-                directLineDomain = new URL("v3/directline", regionalData.channelUrlsById.directline)
-                    .toString()
-                    .replace(/\/$/, "");
+// ================= INIT =================
+async function inicializarBot() {
 
-                // 2. Obtener token
-                const tokenResponse = await fetch(tokenEndpoint);
-                const tokenData = await tokenResponse.json();
-                directLineToken = tokenData.token;
+    const apiVersion = new URL(tokenEndpoint).searchParams.get("api-version");
+    const baseUrl = new URL(tokenEndpoint).origin;
 
-                // 3. Crear conversación
-                const conversationResponse = await fetch(`${directLineDomain}/conversations`, {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${directLineToken}`
-                    }
-                });
+    const regional = await fetch(`${baseUrl}/powervirtualagents/regionalchannelsettings?api-version=${apiVersion}`);
+    const regionalData = await regional.json();
 
-                const conversationData = await conversationResponse.json();
-                conversationId = conversationData.conversationId;
+    directLineDomain = new URL("v3/directline", regionalData.channelUrlsById.directline).toString().replace(/\/$/, "");
 
-                // 4. Disparar saludo inicial
-                await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${directLineToken}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        type: "event",
-                        name: "startConversation",
-                        from: { id: userId, role: "user" },
-                        channelId: "webchat",
-                        entities: [
-                            {
-                                type: "ClientCapabilities",
-                                requiresBotState: true,
-                                supportsListening: true,
-                                supportsTts: true
-                            }
-                        ]
-                    })
-                });
+    const tokenRes = await fetch(tokenEndpoint);
+    const tokenData = await tokenRes.json();
+    directLineToken = tokenData.token;
 
-                // 5. Esperar un poco para que el greeting se termine de generar
-                document.getElementById("estado").innerText = "Preparando conversación...";
-                await esperar(1800);
+    const conv = await fetch(`${directLineDomain}/conversations`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${directLineToken}` }
+    });
 
-                // 6. Consumir greeting inicial y dejar watermark limpio
-                await drenarMensajesIniciales();
+    const convData = await conv.json();
+    conversationId = convData.conversationId;
 
-                inicializado = true;
-                document.getElementById("estado").innerText = "Agente listo";
+    // iniciar conversación
+    await esperar(1500);
 
-            } catch (error) {
-                console.error("Error inicializando agente:", error);
-                document.getElementById("estado").innerText = "Error al inicializar el agente";
-            }
-        }
+    await drenarInicial();
 
-        async function drenarMensajesIniciales() {
-            try {
-                const response = await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
-                    headers: {
-                        "Authorization": `Bearer ${directLineToken}`
-                    }
-                });
+    inicializado = true;
+    document.getElementById("estado").innerText = "Listo";
+}
 
-                const data = await response.json();
+// ================= LIMPIAR INICIO =================
+async function drenarInicial() {
+    const res = await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
+        headers: { "Authorization": `Bearer ${directLineToken}` }
+    });
+    const data = await res.json();
+    watermark = data.watermark;
+}
 
-                if (data.watermark) {
-                    watermark = data.watermark;
-                }
+// ================= ENVIAR TEXTO =================
+async function enviarTexto() {
 
-                // No mostrar greeting, solo limpiar backlog
-                document.getElementById("respuesta").innerText = "";
+    if (!inicializado || procesando) return;
 
-            } catch (error) {
-                console.warn("No se pudieron drenar mensajes iniciales:", error);
-            }
-        }
+    const texto = document.getElementById("inputTexto").value;
 
-        async function enviarTexto() {
-            if (!inicializado) {
-                document.getElementById("respuesta").innerText = "El agente todavía no está listo";
-                return;
-            }
+    procesando = true;
+    document.getElementById("estado").innerText = "Procesando...";
 
-            if (procesando) {
-                return;
-            }
+    await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${directLineToken}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            type: "message",
+            from: { id: userId, role: "user" },
+            text: texto
+        })
+    });
 
-            const texto = document.getElementById("inputTexto").value.trim();
+    const respuesta = await esperarRespuesta();
 
-            if (!texto) {
-                alert("Escribe algo o usa el micrófono");
-                return;
-            }
+    document.getElementById("respuesta").innerText = respuesta;
 
-            procesando = true;
-            document.getElementById("estado").innerText = "Enviando mensaje...";
-            document.getElementById("respuesta").innerText = "Procesando...";
+    procesando = false;
+    document.getElementById("estado").innerText = "Listo";
+}
 
-            try {
-                // Enviar mensaje del usuario
-                await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${directLineToken}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        type: "message",
-                        from: { id: userId, role: "user" },
-                        text: texto
-                    })
-                });
+// ================= ESPERAR RESPUESTA =================
+async function esperarRespuesta() {
 
-                // Esperar SOLO la siguiente respuesta nueva del bot
-                const respuestaBot = await esperarRespuestaBot();
+    for (let i = 0; i < 15; i++) {
 
-                document.getElementById("respuesta").innerText = respuestaBot;
-                document.getElementById("estado").innerText = "Agente listo";
-            } catch (error) {
-                console.error("Error enviando mensaje:", error);
-                document.getElementById("respuesta").innerText = "Error al conectar con el agente";
-                document.getElementById("estado").innerText = "Error";
-            } finally {
-                procesando = false;
-            }
-        }
+        const url = watermark
+            ? `${directLineDomain}/conversations/${conversationId}/activities?watermark=${encodeURIComponent(watermark)}`
+            : `${directLineDomain}/conversations/${conversationId}/activities`;
 
-        async function esperarRespuestaBot(intentos = 18, pausaMs = 1200) {
-            for (let i = 0; i < intentos; i++) {
-                const url = watermark
-                    ? `${directLineDomain}/conversations/${conversationId}/activities?watermark=${encodeURIComponent(watermark)}`
-                    : `${directLineDomain}/conversations/${conversationId}/activities`;
-
-                const response = await fetch(url, {
-                    headers: {
-                        "Authorization": `Bearer ${directLineToken}`
-                    }
-                });
-
-                const data = await response.json();
-
-                if (data.watermark) {
-                    watermark = data.watermark;
-                }
-
-                const mensajesBot = (data.activities || []).filter(a =>
-                    a.type === "message" &&
-                    a.from &&
-                    a.from.role === "bot" &&
-                    a.text &&
-                    a.text.trim().length > 0
-                );
-
-                if (mensajesBot.length > 0) {
-                    // Tomar solo el último mensaje nuevo del bot
-                    return mensajesBot[mensajesBot.length - 1].text;
-                }
-
-                await esperar(pausaMs);
-            }
-
-            return "El agente tardó demasiado en responder";
-        }
-
-        function hablar() {
-            if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
-                alert("Tu navegador no soporta reconocimiento de voz");
-                return;
-            }
-
-            if (procesando) {
-                return;
-            }
-
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            const reconocimiento = new SpeechRecognition();
-
-            reconocimiento.lang = "es-MX";
-            reconocimiento.interimResults = false;
-            reconocimiento.maxAlternatives = 1;
-
-            reconocimiento.start();
-
-            reconocimiento.onstart = function () {
-                document.getElementById("estado").innerText = "Escuchando...";
-            };
-
-            reconocimiento.onresult = function (event) {
-                const texto = event.results[0][0].transcript;
-                document.getElementById("inputTexto").value = texto;
-                enviarTexto();
-            };
-
-            reconocimiento.onerror = function (event) {
-                console.error("Error de voz:", event.error);
-                document.getElementById("estado").innerText = "Error en reconocimiento de voz";
-            };
-
-            reconocimiento.onend = function () {
-                if (!procesando && inicializado) {
-                    document.getElementById("estado").innerText = "Agente listo";
-                }
-            };
-        }
-
-        function esperar(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-
-        document.getElementById("inputTexto").addEventListener("keydown", function(event) {
-            if (event.key === "Enter") {
-                enviarTexto();
-            }
+        const res = await fetch(url, {
+            headers: { "Authorization": `Bearer ${directLineToken}` }
         });
 
-        inicializarBot();
-    </script>
+        const data = await res.json();
+
+        if (data.watermark) watermark = data.watermark;
+
+        const botMsgs = data.activities.filter(a =>
+            a.type === "message" &&
+            a.from.role === "bot" &&
+            a.text
+        );
+
+        if (botMsgs.length > 0) {
+            return botMsgs[botMsgs.length - 1].text;
+        }
+
+        await esperar(1200);
+    }
+
+    return "Sin respuesta";
+}
+
+// ================= VOZ (AZURE) =================
+async function hablar() {
+
+    document.getElementById("estado").innerText = "Grabando...";
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    const recorder = new MediaRecorder(stream);
+    let chunks = [];
+
+    recorder.ondataavailable = e => chunks.push(e.data);
+
+    recorder.onstop = async () => {
+
+        document.getElementById("estado").innerText = "Transcribiendo...";
+
+        const blob = new Blob(chunks, { type: "audio/wav" });
+        const buffer = await blob.arrayBuffer();
+
+        const res = await fetch(
+            `https://${speechRegion}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=es-MX`,
+            {
+                method: "POST",
+                headers: {
+                    "Ocp-Apim-Subscription-Key": speechKey,
+                    "Content-Type": "audio/wav"
+                },
+                body: buffer
+            }
+        );
+
+        const data = await res.json();
+
+        if (data.DisplayText) {
+            document.getElementById("inputTexto").value = data.DisplayText;
+            enviarTexto();
+        } else {
+            document.getElementById("estado").innerText = "No se entendió";
+        }
+
+        stream.getTracks().forEach(t => t.stop());
+        chunks = [];
+    };
+
+    recorder.start();
+
+    setTimeout(() => recorder.stop(), 4000);
+}
+
+// ================= UTILS =================
+function esperar(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
+
+inicializarBot();
+
+</script>
+
 </body>
 </html>
