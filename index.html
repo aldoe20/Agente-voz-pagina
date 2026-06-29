@@ -1,187 +1,763 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es-MX">
 <head>
   <meta charset="UTF-8" />
-  <title>Agente con voz</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asistente de Prospectos</title>
 
-  <!-- Azure Speech SDK -->
-  <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
+  <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 720px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      border-left: 1px solid #e5e7eb;
+      border-right: 1px solid #e5e7eb;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      background: #ffffff;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo {
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+      border-radius: 10px;
+      background: #fff;
+      flex-shrink: 0;
+    }
+
+    .header-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header h2 {
+      margin: 0;
+      font-size: 18px;
+      color: #111827;
+    }
+
+    .header .sub {
+      margin-top: 2px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .status-bar {
+      padding: 8px 16px;
+      font-size: 13px;
+      color: #374151;
+      border-bottom: 1px solid #f0f0f0;
+      background: #fafafa;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+    }
+
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scroll-behavior: smooth;
+    }
+
+    .message {
+      max-width: 88%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 14px;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: #dbeafe;
+      color: #111827;
+      border: 1px solid #bfdbfe;
+    }
+
+    .message.agent {
+      align-self: flex-start;
+      background: #f3f4f6;
+      color: #111827;
+      border: 1px solid #e5e7eb;
+    }
+
+    .message.system {
+      align-self: center;
+      max-width: 100%;
+      background: #fff7ed;
+      color: #9a3412;
+      border: 1px solid #fdba74;
+      font-size: 13px;
+    }
+
+    .meta {
+      font-size: 11px;
+      font-weight: bold;
+      color: #6b7280;
+      margin-bottom: 6px;
+    }
+
+    .tokens {
+      margin-top: 8px;
+      padding-top: 8px;
+      font-size: 12px;
+      color: #4b5563;
+      border-top: 1px dashed #d1d5db;
+    }
+
+    .token-debug {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .voice-actions {
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-start;
+      gap: 8px;
+    }
+
+    .btn-listen {
+      border: none;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      background: #1d4ed8;
+      color: #ffffff;
+      min-width: auto;
+    }
+
+    .btn-listen:hover {
+      background: #1e40af;
+    }
+
+    .composer {
+      position: sticky;
+      bottom: 0;
+      background: #ffffff;
+      border-top: 1px solid #e5e7eb;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .composer input {
+      flex: 1;
+      border: 1px solid #d1d5db;
+      border-radius: 999px;
+      padding: 12px 14px;
+      font-size: 15px;
+      outline: none;
+      min-width: 0;
+    }
+
+    .composer input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+    }
+
+    .composer button {
+      border: none;
+      border-radius: 999px;
+      padding: 11px 14px;
+      font-size: 14px;
+      cursor: pointer;
+      min-width: 48px;
+    }
+
+    .btn-primary {
+      background: #111827;
+      color: white;
+    }
+
+    .btn-secondary {
+      background: #1d4ed8;
+      color: white;
+    }
+
+    .btn-secondary.recording {
+      background: #dc2626;
+    }
+
+    .btn-ghost {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    @media (max-width: 600px) {
+      .app {
+        max-width: 100%;
+      }
+
+      .header h2 {
+        font-size: 16px;
+      }
+
+      .message {
+        max-width: 94%;
+        font-size: 14px;
+      }
+
+      .composer {
+        gap: 6px;
+      }
+
+      .composer button {
+        padding: 10px 12px;
+      }
+
+      .logo {
+        width: 38px;
+        height: 38px;
+      }
+
+      .btn-listen {
+        font-size: 12px;
+        padding: 7px 11px;
+      }
+    }
+  </style>
 </head>
 
 <body>
+  <div class="app">
+    <div class="header">
+      <img src="Logo.png" alt="Logo" class="logo" />
+      <div class="header-text">
+        <h2>Asistente de Prospectos</h2>
+        <div class="sub">Foundry + MCP + Azure Speech</div>
+      </div>
+    </div>
 
-<h2>Agente con voz</h2>
+    <div id="estado" class="status-bar">Listo</div>
+    <div id="chat" class="chat-container"></div>
 
-<input type="text" id="inputTexto" placeholder="Escribe o usa la voz..." />
-<button onclick="enviarTexto()">Enviar</button>
-<button onclick="hablar()">🎤 Hablar</button>
+    <div class="composer">
+      <input
+        type="text"
+        id="inputTexto"
+        placeholder="Escribe o usa el micrófono..."
+        autocomplete="off"
+      />
+      <button id="btnMic" class="btn-secondary" onclick="capturarVozAzure()">🎤</button>
+      <button id="btnEnviar" class="btn-primary" onclick="enviarTexto()">Enviar</button>
+      <button id="btnNuevo" class="btn-ghost" onclick="reiniciarConversacion()">Nuevo</button>
+    </div>
+  </div>
 
-<p id="estado"></p>
-<p id="respuesta"></p>
+  <script>
+    const API_URL = "https://backend-agentevoz-g7c4g6fxewhje9ce.centralus-01.azurewebsites.net/chat";
+    const RESET_URL = "https://backend-agentevoz-g7c4g6fxewhje9ce.centralus-01.azurewebsites.net/reset";
 
-<script>
+    const SPEECH_KEY = "7XEttQQXjFfcl8wQJyN8J6Y8sQhSnu5fqsLceYRIE4nf29Ip27J9JQQJ99CFACYeBjFXJ3w3AAAYACOGLZIC";
+    const SPEECH_REGION = "eastus";
+    const SPEECH_LANGUAGE = "es-MX";
+    const AGENT_VOICE_NAME = "es-MX-DaliaNeural";
 
-// ================= CONFIG =================
-const speechKey = "7XEttQQXjFfcl8wQJyN8J6Y8sQhSnu5fqsLceYRIE4nf29Ip27J9JQQJ99CFACYeBjFXJ3w3AAAYACOGLZIC";
-const speechRegion = "eastus";
-
-const tokenEndpoint = "https://f1961b2c14e1e41bb646d75d750e21.0c.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr61c_Agenteconexiondevoz/directline/token?api-version=2022-03-01-preview";
-
-let directLineToken;
-let directLineDomain;
-let conversationId;
-let watermark;
-let procesando = false;
-let inicializado = false;
-
-const userId = "user-" + Math.random();
-
-// ================= INIT BOT =================
-async function inicializarBot() {
-
-  const apiVersion = new URL(tokenEndpoint).searchParams.get("api-version");
-  const baseUrl = new URL(tokenEndpoint).origin;
-
-  const regional = await fetch(`${baseUrl}/powervirtualagents/regionalchannelsettings?api-version=${apiVersion}`);
-  const regionalData = await regional.json();
-
-  directLineDomain = new URL("v3/directline", regionalData.channelUrlsById.directline).toString().replace(/\/$/, "");
-
-  const tokenRes = await fetch(tokenEndpoint);
-  const tokenData = await tokenRes.json();
-
-  directLineToken = tokenData.token;
-
-  const conv = await fetch(`${directLineDomain}/conversations`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${directLineToken}`
+    let sessionId = localStorage.getItem("demo_session_id");
+    if (!sessionId) {
+      sessionId = "session-" + crypto.randomUUID();
+      localStorage.setItem("demo_session_id", sessionId);
     }
-  });
 
-  const convData = await conv.json();
-  conversationId = convData.conversationId;
+    let currentRecognizer = null;
+    let currentSilenceTimeout = null;
+    let currentMaxListenTimeout = null;
+    let currentSynthesizer = null;
+    let currentSpeaker = null;
 
-  await esperar(1500);
-  await drenarInicial();
+    let speechFinalText = "";
+    let speechWasSent = false;
+    let isSending = false;
 
-  inicializado = true;
-  document.getElementById("estado").innerText = "Listo";
-}
+    function setEstado(texto) {
+      document.getElementById("estado").innerText = texto;
+    }
 
-// ================= LIMPIAR INICIO =================
-async function drenarInicial() {
+    function scrollToBottom() {
+      const chat = document.getElementById("chat");
+      chat.scrollTop = chat.scrollHeight;
+    }
 
-  const res = await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
-    headers: { "Authorization": `Bearer ${directLineToken}` }
-  });
+    function setButtonsDisabled(disabled) {
+      document.getElementById("btnEnviar").disabled = disabled;
+      document.getElementById("btnNuevo").disabled = disabled;
+      document.getElementById("btnMic").disabled = disabled;
+    }
 
-  const data = await res.json();
-  watermark = data.watermark;
-}
+    function agregarMensaje(tipo, texto, usage = null, tokenDebug = null) {
+      const chat = document.getElementById("chat");
 
-// ================= ENVIAR TEXTO =================
-async function enviarTexto() {
+      const bloque = document.createElement("div");
+      bloque.className = `message ${tipo}`;
 
-  if (!inicializado || procesando) return;
+      const meta = document.createElement("div");
+      meta.className = "meta";
 
-  const texto = document.getElementById("inputTexto").value;
+      if (tipo === "user") meta.textContent = "Tú";
+      else if (tipo === "agent") meta.textContent = "Agente";
+      else meta.textContent = "Sistema";
 
-  procesando = true;
-  document.getElementById("estado").innerText = "Procesando...";
+      const contenido = document.createElement("div");
+      contenido.textContent = texto;
 
-  await fetch(`${directLineDomain}/conversations/${conversationId}/activities`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${directLineToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      type: "message",
-      from: { id: userId, role: "user" },
-      text: texto
-    })
-  });
+      bloque.appendChild(meta);
+      bloque.appendChild(contenido);
 
-  const respuesta = await esperarRespuesta();
+      if (usage) {
+        const tokens = document.createElement("div");
+        tokens.className = "tokens";
+        tokens.textContent =
+          `Tokens usados — Input: ${usage.input_tokens} | Output: ${usage.output_tokens} | Total: ${usage.total_tokens}`;
+        bloque.appendChild(tokens);
+      }
 
-  document.getElementById("respuesta").innerText = respuesta;
+      if (tokenDebug && tipo === "agent") {
+        const debug = document.createElement("div");
+        debug.className = "token-debug";
 
-  procesando = false;
-  document.getElementById("estado").innerText = "Listo";
-}
+        let detalle = `Turno ${tokenDebug.turn_number} · ${tokenDebug.turn_type === "consulta_nueva" ? "consulta nueva" : "consulta con historial"}`;
 
-// ================= RESPUESTA BOT =================
-async function esperarRespuesta() {
+        if (
+          tokenDebug.delta_vs_previous &&
+          tokenDebug.delta_vs_previous.input_tokens !== null
+        ) {
+          detalle += ` · Δ input: ${tokenDebug.delta_vs_previous.input_tokens >= 0 ? "+" : ""}${tokenDebug.delta_vs_previous.input_tokens}`;
+        }
 
-  for (let i = 0; i < 15; i++) {
+        debug.textContent = detalle;
+        bloque.appendChild(debug);
+      }
 
-    const url = watermark
-      ? `${directLineDomain}/conversations/${conversationId}/activities?watermark=${encodeURIComponent(watermark)}`
-      : `${directLineDomain}/conversations/${conversationId}/activities`;
+      if (tipo === "agent") {
+        const voiceRow = document.createElement("div");
+        voiceRow.className = "voice-actions";
 
-    const res = await fetch(url, {
-      headers: {
-        "Authorization": `Bearer ${directLineToken}`
+        const listenButton = document.createElement("button");
+        listenButton.className = "btn-listen";
+        listenButton.type = "button";
+        listenButton.textContent = "🔊 Escuchar";
+        listenButton.onclick = function () {
+          hablarRespuestaAzure(texto);
+        };
+
+        voiceRow.appendChild(listenButton);
+        bloque.appendChild(voiceRow);
+      }
+
+      chat.appendChild(bloque);
+      scrollToBottom();
+    }
+
+    function limpiarPantalla() {
+      detenerVozAzure();
+
+      document.getElementById("chat").innerHTML = "";
+      document.getElementById("inputTexto").value = "";
+
+      speechFinalText = "";
+      speechWasSent = false;
+
+      setEstado("Conversación reiniciada");
+    }
+
+    function limpiarTextoParaVoz(texto) {
+      return String(texto || "")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/?[^>]+(>|$)/g, "")
+        .replace(/\*\*/g, "")
+        .replace(/[#*_`]/g, "")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "y")
+        .replace(/&lt;/gi, "")
+        .replace(/&gt;/gi, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+    }
+
+    function detenerVozAzure() {
+      if (currentSynthesizer) {
+        try { currentSynthesizer.close(); } catch {}
+        currentSynthesizer = null;
+      }
+
+      if (currentSpeaker) {
+        try { currentSpeaker.pause(); } catch {}
+        try { currentSpeaker.close(); } catch {}
+        currentSpeaker = null;
+      }
+    }
+
+    function hablarRespuestaAzure(texto) {
+      if (!window.SpeechSDK) {
+        setEstado("No se cargó Azure Speech SDK.");
+        return;
+      }
+
+      const textoLimpio = limpiarTextoParaVoz(texto);
+      if (!textoLimpio) return;
+
+      detenerVozAzure();
+
+      try {
+        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(SPEECH_KEY, SPEECH_REGION);
+        speechConfig.speechSynthesisLanguage = SPEECH_LANGUAGE;
+        speechConfig.speechSynthesisVoiceName = AGENT_VOICE_NAME;
+
+        const speaker = new SpeechSDK.SpeakerAudioDestination();
+        const audioConfig = SpeechSDK.AudioConfig.fromSpeakerOutput(speaker);
+        const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
+
+        currentSpeaker = speaker;
+        currentSynthesizer = synthesizer;
+
+        setEstado("Reproduciendo respuesta...");
+
+        synthesizer.speakTextAsync(
+          textoLimpio,
+          function (result) {
+            try { synthesizer.close(); } catch {}
+
+            if (currentSynthesizer === synthesizer) currentSynthesizer = null;
+            if (currentSpeaker === speaker) currentSpeaker = null;
+
+            if (result && result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+              setEstado("Listo");
+            } else {
+              setEstado("No se pudo reproducir la respuesta completa.");
+            }
+          },
+          function (err) {
+            console.error("Error TTS:", err);
+
+            try { synthesizer.close(); } catch {}
+
+            if (currentSynthesizer === synthesizer) currentSynthesizer = null;
+            if (currentSpeaker === speaker) currentSpeaker = null;
+
+            setEstado("Error al reproducir voz.");
+          }
+        );
+      } catch (error) {
+        console.error(error);
+        setEstado("Error al iniciar Text to Speech.");
+      }
+    }
+
+    async function enviarTexto(textoForzado = null) {
+      detenerVozAzure();
+
+      const input = document.getElementById("inputTexto");
+      const texto = textoForzado ? textoForzado.trim() : input.value.trim();
+
+      if (!texto || isSending) return;
+
+      agregarMensaje("user", texto);
+      setEstado("Consultando agente...");
+
+      input.value = "";
+      isSending = true;
+      setButtonsDisabled(true);
+
+      try {
+        const resp = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: texto,
+            session_id: sessionId
+          })
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          throw new Error(data.detail || data.message || "Error del backend");
+        }
+
+        const reply = data.reply || "Sin respuesta";
+        const usage = data.usage || null;
+        const tokenDebug = data.token_debug || null;
+
+        agregarMensaje("agent", reply, usage, tokenDebug);
+
+        if (data.session_id) {
+          sessionId = data.session_id;
+          localStorage.setItem("demo_session_id", sessionId);
+        }
+
+        setEstado("Listo");
+      } catch (err) {
+        console.error(err);
+        setEstado("Error");
+        agregarMensaje("system", "No se pudo conectar al backend.");
+      } finally {
+        isSending = false;
+        setButtonsDisabled(false);
+      }
+    }
+
+    async function reiniciarConversacion() {
+      try {
+        detenerVozAzure();
+
+        if (currentRecognizer) {
+          stopAzureRecognition(false);
+        }
+
+        setEstado("Reiniciando conversación...");
+
+        const resp = await fetch(RESET_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: sessionId
+          })
+        });
+
+        const data = await resp.json();
+
+        if (data.session_id) {
+          sessionId = data.session_id;
+          localStorage.setItem("demo_session_id", sessionId);
+        }
+
+        limpiarPantalla();
+      } catch (err) {
+        console.error(err);
+        setEstado("Error al reiniciar conversación");
+      }
+    }
+
+    function clearSpeechTimers() {
+      if (currentSilenceTimeout) {
+        clearTimeout(currentSilenceTimeout);
+        currentSilenceTimeout = null;
+      }
+
+      if (currentMaxListenTimeout) {
+        clearTimeout(currentMaxListenTimeout);
+        currentMaxListenTimeout = null;
+      }
+    }
+
+    function scheduleSilenceStop() {
+      if (currentSilenceTimeout) clearTimeout(currentSilenceTimeout);
+
+      currentSilenceTimeout = setTimeout(function () {
+        if (currentRecognizer) {
+          stopAzureRecognition(true);
+        }
+      }, 1600);
+    }
+
+    function stopAzureRecognition(sendAfterStop = false) {
+      const btnMic = document.getElementById("btnMic");
+      btnMic.classList.remove("recording");
+
+      clearSpeechTimers();
+
+      const recognizerToStop = currentRecognizer;
+      currentRecognizer = null;
+
+      if (!recognizerToStop) {
+        if (sendAfterStop) enviarTextoDesdeVoz();
+        return;
+      }
+
+      try {
+        recognizerToStop.stopContinuousRecognitionAsync(
+          function () {
+            try { recognizerToStop.close(); } catch {}
+            if (sendAfterStop) enviarTextoDesdeVoz();
+          },
+          function () {
+            try { recognizerToStop.close(); } catch {}
+            if (sendAfterStop) enviarTextoDesdeVoz();
+          }
+        );
+      } catch (e) {
+        try { recognizerToStop.close(); } catch {}
+        if (sendAfterStop) enviarTextoDesdeVoz();
+      }
+    }
+
+    function enviarTextoDesdeVoz() {
+      if (speechWasSent) return;
+
+      const input = document.getElementById("inputTexto");
+      const texto = input.value.trim();
+
+      if (!texto) {
+        setEstado("No se detectó texto para enviar.");
+        return;
+      }
+
+      speechWasSent = true;
+      setEstado("Texto detectado. Enviando...");
+      enviarTexto(texto);
+    }
+
+    function capturarVozAzure() {
+      detenerVozAzure();
+
+      if (!window.SpeechSDK) {
+        setEstado("No se cargó Azure Speech SDK.");
+        return;
+      }
+
+      const btnMic = document.getElementById("btnMic");
+      const input = document.getElementById("inputTexto");
+
+      if (currentRecognizer) {
+        stopAzureRecognition(true);
+        return;
+      }
+
+      btnMic.classList.add("recording");
+      setEstado("Escuchando con Azure Speech...");
+
+      speechFinalText = "";
+      speechWasSent = false;
+      input.value = "";
+
+      try {
+        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(SPEECH_KEY, SPEECH_REGION);
+        speechConfig.speechRecognitionLanguage = SPEECH_LANGUAGE;
+
+        const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+        const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+
+        currentRecognizer = recognizer;
+
+        recognizer.recognizing = function (_s, e) {
+          if (e.result && e.result.text) {
+            const interimText = e.result.text.trim();
+            input.value = (speechFinalText + " " + interimText).trim();
+            setEstado("Escuchando...");
+          }
+        };
+
+        recognizer.recognized = function (_s, e) {
+          if (
+            e.result &&
+            e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech &&
+            e.result.text &&
+            e.result.text.trim()
+          ) {
+            speechFinalText = (speechFinalText + " " + e.result.text.trim()).trim();
+            input.value = speechFinalText;
+
+            setEstado("Escuchando...");
+            scheduleSilenceStop();
+            return;
+          }
+
+          if (e.result && e.result.reason === SpeechSDK.ResultReason.NoMatch) {
+            if (speechFinalText.trim()) {
+              scheduleSilenceStop();
+            } else {
+              stopAzureRecognition(false);
+              setEstado("No se pudo reconocer voz.");
+            }
+          }
+        };
+
+        recognizer.canceled = function (_s, e) {
+          console.error("Azure Speech cancelado:", e);
+
+          if (speechFinalText.trim() || input.value.trim()) {
+            stopAzureRecognition(true);
+          } else {
+            stopAzureRecognition(false);
+            setEstado("Reconocimiento cancelado o sin audio.");
+          }
+        };
+
+        recognizer.sessionStopped = function () {
+          if (speechFinalText.trim() || input.value.trim()) {
+            stopAzureRecognition(true);
+          } else {
+            stopAzureRecognition(false);
+            setEstado("Sesión de voz finalizada.");
+          }
+        };
+
+        recognizer.startContinuousRecognitionAsync(
+          function () {
+            currentMaxListenTimeout = setTimeout(function () {
+              if (currentRecognizer) {
+                stopAzureRecognition(true);
+              }
+            }, 45000);
+          },
+          function (err) {
+            console.error(err);
+            stopAzureRecognition(false);
+            setEstado("Error al iniciar Azure Speech.");
+          }
+        );
+      } catch (error) {
+        console.error(error);
+        stopAzureRecognition(false);
+        setEstado("Error al iniciar Azure Speech.");
+      }
+    }
+
+    document.getElementById("inputTexto").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        enviarTexto();
       }
     });
-
-    const data = await res.json();
-
-    if (data.watermark) watermark = data.watermark;
-
-    const botMsgs = data.activities.filter(a =>
-      a.type === "message" &&
-      a.from.role === "bot" &&
-      a.text
-    );
-
-    if (botMsgs.length > 0) {
-      return botMsgs[botMsgs.length - 1].text;
-    }
-
-    await esperar(1200);
-  }
-
-  return "Sin respuesta";
-}
-
-// ================= VOZ CON SDK =================
-function hablar() {
-
-  document.getElementById("estado").innerText = "Escuchando...";
-
-  const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(speechKey, speechRegion);
-  speechConfig.speechRecognitionLanguage = "es-MX";
-
-  const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-
-  const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
-
-  recognizer.recognizeOnceAsync(result => {
-
-    if (result.text) {
-
-      document.getElementById("inputTexto").value = result.text;
-      enviarTexto();
-
-    } else {
-      document.getElementById("estado").innerText = "No se entendió";
-    }
-
-    recognizer.close();
-
-  });
-}
-
-// ================= UTILS =================
-function esperar(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
-
-inicializarBot();
-
-</script>
-
+  </script>
 </body>
 </html>
